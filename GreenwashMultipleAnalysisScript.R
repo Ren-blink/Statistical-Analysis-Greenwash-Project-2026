@@ -1,6 +1,6 @@
 # Model:
 # GWIndex_it = a + b1*SIZE_it + b2*ROA_it + b3*FOREIGN_it + b4*VIOLATION_it
-#              + b5*LEVERAGE_it + b6*SUBSECTOR_it + e_it
+             + b5*LEVERAGE_it + b6*SUBSECTOR_it + e_it
 
 library(plm)        # regresi data panel, uji Chow (pFtest), uji Hausman (phtest)
 library(lmtest)      # bptest (heteroskedastisitas), coeftest

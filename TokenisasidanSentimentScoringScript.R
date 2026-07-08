@@ -26,7 +26,7 @@
 # tibble     -> struktur data rapi
 
 packages <- c("tidytext", "quanteda", "quanteda.textstats",
-              "dplyr", "stringr", "readr", "tibble", "purrr")
+              "dplyr", "stringr", "readr", "tibble", "purrr", "pdftools")
 
 installed <- packages %in% rownames(installed.packages())
 if (any(!installed)) {
@@ -47,24 +47,38 @@ lapply(packages, library, character.only = TRUE)
 #   - doc_id : identitas dokumen (misal "PT_A_2023")
 #   - text   : isi narasi sustainability report
 
-# CONTOH data dummy -- HAPUS/ganti dengan data asli kamu
-# (misalnya baca dari csv: reports <- read_csv("data_sustainability_report.csv"))
+folder_pdf <- "data_pdf/"
+
+file_list <- list.files(folder_pdf, pattern = "\\.pdf$", full.names = TRUE)
+
+if(length(file_list) == 0) {
+  stop("Tidak ada file PDF ditemukan di folder watch ", folder_pdf, "'. Cek kembali path foldernya")
+}
+
+extract_pdf_text <- function(path) {
+  halaman <- pdftools::pdftext(path)
+  paste(halaman, collapse = " ")
+}
+
 reports <- tibble(
-  doc_id = c("PT_A_2023", "PT_B_2023", "PT_C_2023"),
-  text = c(
-    "Perusahaan kami berkomitmen penuh terhadap keberlanjutan lingkungan dan telah mengurangi emisi karbon secara signifikan.",
-    "Kami berupaya menjaga kelestarian alam meskipun masih menghadapi tantangan dalam pengelolaan limbah industri.",
-    "Program CSR kami memberikan dampak positif bagi masyarakat sekitar, namun beberapa kritik terkait pencemaran belum sepenuhnya kami tanggapi."
-  )
+  doc_id = file_list %>% basename() %>% str_remove("\\.pdf$"),
+  text   = map_chr(file_list, extract_pdf_text)
 )
 
-# Kalau data kamu berupa banyak file .txt terpisah (misal 1.txt, 2.txt, dst),
-# kamu bisa pakai pola berikut:
-#
-# file_list <- list.files("folder_data/", pattern = "\\.txt$", full.names = TRUE)
+# Cek cepat: pastikan teks berhasil terbaca (tidak kosong) untuk tiap dokumen
+reports %>%
+  mutate(jumlah_karakter = str_length(text)) %>%
+  select(doc_id, jumlah_karakter) %>%
+  print()
+
+# --- Kalau hanya mau coba dengan data dummy dulu (tanpa PDF), aktifkan ini: ---
 # reports <- tibble(
-#   doc_id = basename(file_list),
-#   text   = map_chr(file_list, ~ paste(readLines(.x, warn = FALSE), collapse = " "))
+#   doc_id = c("PT_A_2023", "PT_B_2023", "PT_C_2023"),
+#   text = c(
+#     "Perusahaan kami berkomitmen penuh terhadap keberlanjutan lingkungan dan telah mengurangi emisi karbon secara signifikan.",
+#     "Kami berupaya menjaga kelestarian alam meskipun masih menghadapi tantangan dalam pengelolaan limbah industri.",
+#     "Program CSR kami memberikan dampak positif bagi masyarakat sekitar, namun beberapa kritik terkait pencemaran belum sepenuhnya kami tanggapi."
+#   )
 # )
 
 
