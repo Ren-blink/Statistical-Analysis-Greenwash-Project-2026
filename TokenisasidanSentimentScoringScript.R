@@ -47,7 +47,7 @@ lapply(packages, library, character.only = TRUE)
 #   - doc_id : identitas dokumen (misal "PT_A_2023")
 #   - text   : isi narasi sustainability report
 
-folder_pdf <- "data_pdf/"
+folder_pdf <- "C:/Users/Rayhan Nauvan/OneDrive/Documents/Journals/Journal GREENWASH/Folder Report/ADRO"
 
 file_list <- list.files(folder_pdf, pattern = "\\.pdf$", full.names = TRUE)
 
@@ -56,7 +56,7 @@ if(length(file_list) == 0) {
 }
 
 extract_pdf_text <- function(path) {
-  halaman <- pdftools::pdftext(path)
+  halaman <- pdftools::pdf_text(path)
   paste(halaman, collapse = " ")
 }
 
@@ -144,11 +144,10 @@ head(tokens_clean, 15)
 #
 # Kita unduh langsung dari GitHub supaya script ini reproducible.
 
-url_pos <- "https://raw.githubusercontent.com/fajri91/InSet/master/positive.tsv"
-url_neg <- "https://raw.githubusercontent.com/fajri91/InSet/master/negative.tsv"
+folder_lexicon <- "C:/Users/Rayhan Nauvan/OneDrive/Documents/StatisticalAnalysisGreenwashProject2026/lexicon"
 
-lex_pos <- read_tsv(url_pos, col_names = c("word", "weight"), show_col_types = FALSE)
-lex_neg <- read_tsv(url_neg, col_names = c("word", "weight"), show_col_types = FALSE)
+lex_pos <- read_tsv(paste0(folder_lexicon, "/positive.tsv"), col_names = c("word", "weight"), skip = 1, show_col_types = FALSE)
+lex_neg <- read_tsv(paste0(folder_lexicon, "/negative.tsv"), col_names = c("word", "weight"), skip = 1, show_col_types = FALSE)
 
 # Gabungkan jadi satu leksikon: kolom "word" dan "weight" (bobot sentimen)
 lexicon_id <- bind_rows(lex_pos, lex_neg) %>%
@@ -199,20 +198,74 @@ sentiment_score <- tokens_scored %>%
 
 print(sentiment_score)
 
+#===============================================================================
 
 # ------------------------------------------------------------------------------
-# 8. (BONUS) FREKUENSI KATA ASPIRASIONAL
+# 8. KATA ASPIRASIONAL -- PENDEKATAN DATA-DRIVEN
 # ------------------------------------------------------------------------------
-# Di riset greenwashing, selain skor sentimen, sering dihitung juga frekuensi
-# "kata aspirasional" -- kata yang menonjolkan citra positif/berkomitmen tapi
-# belum tentu dibarengi bukti/tindakan nyata (indikasi greenwashing kalau
-# frekuensinya tinggi tapi kinerja lingkungan aktual -- misalnya skor PROPER -- rendah).
+# Daripada menebak sendiri kata mana yang "aspirasional" (rawan bias peneliti),
+# pendekatan di sini membiarkan DATA yang menunjukkan kandidatnya:
+#   8a. Hitung kata yang paling sering muncul di seluruh korpus (term frequency)
+#   8b. Kamu validasi manual: kandidat mana yang benar aspirasional/klaim komitmen
+#       (proses ini dilakukan SEKALI di luar R, misal di Excel)
+#   8c. Baca kembali daftar yang sudah divalidasi, lalu hitung frekuensinya per dokumen
 #
-# Silakan sesuaikan daftar kata ini dengan kajian literatur greenwashing kamu.
+# Kenapa tetap perlu validasi manual? Karena "aspirasional" itu konsep semantik
+# (soal MAKNA klaim), bukan pola statistik murni -- tidak ada algoritma yang bisa
+# 100% otomatis menentukan itu tanpa human judgment. Tapi dengan cara ini,
+# kandidatnya OBJEKTIF berasal dari data (kata yang benar-benar sering dipakai di
+# laporanmu), bukan ditebak duluan oleh peneliti sebelum lihat datanya.
 
-kata_aspirasional <- c("berkomitmen", "berkelanjutan", "peduli", "ramah lingkungan",
-                       "inovatif", "unggul", "terdepan", "bertanggung jawab",
-                       "berwawasan lingkungan", "hijau")
+# --- 8a. HITUNG FREKUENSI KATA DI SELURUH KORPUS ---
+# Kita hitung berapa kali tiap kata muncul, ditotal dari SEMUA dokumen sekaligus, 
+# supaya kandidat yang muncul adalah kata yang memang umum dipakai lintas laporan
+# (bukan cuma kebetulan sering di satu perusahaan saja).
+
+frekuensi_kata <- tokens_clean %>%
+  count(word, sort = TRUE, name = "frekuensi")
+
+# Ambil top N kata (misal 150) sebagai KANDIDAT untuk divalidasi manual.
+# N bisa disesuaikan -- makin besar N, makin lengkap tapi makin lama proses validasinya.
+top_n_kandidat <- 150
+
+kandidat_aspirasional <- frekuensi_kata %>%
+  slice_max(frekuensi, n = top_n_kandidat) %>%
+  mutate(
+    # Dihitung hanya untuk kandidat top-N (bukan seluruh vocabulary) supaya cepat
+    jumlah_dokumen_muncul = map_int(word, ~ sum(str_detect(reports_clean$text_clean, .x))),
+    aspirasional = NA  # kolom kosong ini yang akan kamu isi manual
+  )
+
+# Ekspor ke CSV supaya bisa dibuka & diisi di Excel
+write_csv(kandidat_aspirasional, "kandidat_kata_aspirasional.csv")
+getwd("kandidat_kata_aspirasional.csv")
+# --- 8b. VALIDASI MANUAL (DILAKUKAN DI LUAR R) ---
+# 1. Buka file "kandidat_kata_aspirasional.csv" yang baru dibuat di folder kerja R kamu
+#    (cek lokasinya dengan getwd())
+# 2. Di kolom "aspirasional", isi TRUE untuk kata yang menurutmu benar mencerminkan
+#    klaim/komitmen/citra positif (misal: "berkomitmen", "berkelanjutan", "inovatif",
+#    "unggul", "bertanggung jawab"), dan FALSE untuk kata umum/netral/teknis yang
+#    tidak relevan (misal: "perusahaan", "tahun", "laporan", "tabel")
+# 3. Simpan file-nya (tetap format .csv), lalu lanjut ke bagian 8c di bawah
+
+# --- 8c. BACA KEMBALI DAFTAR YANG SUDAH DIVALIDASI & HITUNG FREKUENSINYA ---
+# PENTING: jalankan baris ini SETELAH kamu selesai isi kolom "aspirasional" manual.
+# Kalau belum sempat validasi dan cuma mau lihat alurnya jalan dulu, boleh skip ke
+# bagian bawah yang pakai fallback daftar manual sederhana.
+
+kandidat_tervalidasi <- read_csv("C:/Users/Rayhan Nauvan/OneDrive/Documents/StatisticalAnalysisGreenwashProject2026/kandidat_kata_aspirasional.csv", show_col_types = FALSE)
+
+kata_aspirasional <- kandidat_tervalidasi %>%
+  filter(aspirasional == TRUE) %>%
+  pull(word)
+
+# Cek daftar kata aspirasional final yang akan dipakai
+print(kata_aspirasional)
+
+# --- Fallback: kalau belum sempat validasi manual dan mau coba jalankan dulu ---
+# kata_aspirasional <- c("berkomitmen", "berkelanjutan", "peduli", "ramah lingkungan",
+#                        "inovatif", "unggul", "terdepan", "bertanggung jawab",
+#                        "berwawasan lingkungan", "hijau")
 
 freq_aspirasional <- reports_clean %>%
   mutate(
@@ -238,3 +291,117 @@ print(hasil_akhir)
 
 # Simpan hasil ke CSV
 write_csv(hasil_akhir, "hasil_text_mining_sentimen.csv")
+
+
+# ------------------------------------------------------------------------------
+# 10. NORMALISASI MIN-MAX LINTAS SAMPEL -> SKOR NARASI (0-1)
+# ------------------------------------------------------------------------------
+# PENTING: normalisasi di sini dilakukan LINTAS SEMUA DOKUMEN SEKALIGUS
+# (bukan per dokumen satu-satu), supaya perbandingan antar perusahaan/tahun adil.
+# Ini kenapa tahap ini baru bisa dilakukan SETELAH semua dokumen selesai diproses
+# di tahap 1-9 -- kamu butuh nilai MIN dan MAX dari SELURUH sampel dulu.
+#
+# Komponen yang dinormalisasi:
+#   a) skor_ternormalisasi (dari sentiment scoring InSet, tahap 7)
+#   b) rasio_aspirasional  (dari frekuensi kata aspirasional, tahap 8)
+# Skor Narasi = rata-rata dari kedua komponen yang sudah di skala 0-1
+
+normalize_minmax <- function(x) {
+  (x - min(x, na.rm = TRUE)) / (max(x, na.rm = TRUE) - min(x, na.rm = TRUE)) 
+}
+
+hasil_akhir <- hasil_akhir %>%
+  mutate(
+    sentimen_norm = normalize_minmax(skor_ternormalisasi),
+    aspirasional_norm = normalize_minmax(rasio_aspirasional),
+    skor_narasi = (sentimen_norm + aspirasional_norm) / 2
+  )
+
+print(hasil_akhir %>% select(
+  doc_id, skor_ternormalisasi, sentimen_norm, rasio_aspirasional, aspriasional_norm, skor_narasi
+))
+
+# ------------------------------------------------------------------------------
+# 11. IMPORT DATA PROPER & KONVERSI KE SKOR KINERJA AKTUAL (0-1)
+# ------------------------------------------------------------------------------
+# Data PROPER ini TIDAK dihasilkan dari text mining -- ini data sekunder yang kamu
+# kumpulkan sendiri dari publikasi Kementerian Lingkungan Hidup dan Kehutanan (KLHK),
+# biasanya berupa file Excel/CSV yang kamu susun manual per perusahaan per tahun.
+#
+# FORMAT FILE YANG DIHARAPKAN (silakan sesuaikan nama kolom bila beda):
+#   doc_id        : HARUS PERSIS SAMA dengan doc_id di atas (misal "PT_ADRO_2021")
+#                   supaya bisa di-join dengan benar
+#   proper_rating : peringkat PROPER, boleh berupa TEKS ("Hitam","Merah","Biru",
+#                   "Hijau","Emas") ATAU ANGKA (1-5), keduanya didukung di bawah
+
+folder_proper <- "data_proper/"   # <-- ganti sesuai lokasi file data PROPER kamu
+file_proper   <- "data_proper.csv"  # <-- ganti sesuai nama file kamu
+
+data_proper <- read_csv(paste0(folder_proper, file_proper), show_col_types = FALSE)
+
+# Cek dulu bentuk datanya sebelum lanjut
+head(data_proper)
+
+# Kalau proper_rating berupa TEKS, konversi dulu ke skala ordinal 1-5:
+peringkat_ke_ordinal <- c(
+  "Hitam" = 1, "Merah" = 2, "Biru" = 3, "Hijau" = 4, "Emas" = 5
+)
+
+data_proper <- data_proper %>%
+  mutate(
+    proper_ordinal = if (is.character(proper_rating)) {
+      recode(proper_rating, !!!peringkat_ke_ordinal)
+    } else {
+      as.numeric(proper_rating)
+    }
+  )
+
+# Konversi ordinal (1-5) ke skala 0-1, sesuai rumus:
+# Hitam (1) -> 0, Emas (5) -> 1
+konversi_proper <- function(skor_ordinal) {
+  (skor_ordinal - 1) / (5 - 1)
+}
+
+data_proper <- data_proper %>%
+  mutate(skor_kinerja_aktual = konversi_proper(proper_ordinal)) %>%
+  select(doc_id, proper_rating, proper_ordinal, skor_kinerja_aktual)
+
+print(data_proper)
+
+
+
+# ------------------------------------------------------------------------------
+# 12. HITUNG GW_SCORE (GAP/SELISIH) & KATEGORISASI
+# ------------------------------------------------------------------------------
+# GW_Score = |Skor Narasi - Skor Kinerja Aktual|
+# Semakin besar, semakin besar indikasi greenwashing (narasi jauh lebih positif
+# dibanding kinerja lingkungan aktualnya).
+
+hasil_akhir <- hasil_akhir %>%
+  left_join(data_proper, by = "doc_id")
+
+# Cek dulu apakah ada doc_id yang tidak match (PROPER-nya NA) -- ini pertanda
+# ada perbedaan format penulisan doc_id antara data teks dan data PROPER
+hasil_akhir %>%
+  filter(is.na(skor_kinerja_aktual)) %>%
+  select(doc_id)
+
+hasil_akhir <- hasil_akhir %>%
+  mutate(
+    GW_Score = abs(skor_narasi - skor_kinerja_aktual),
+    kategori_greenwashing = case_when(
+      GW_Score <= 0.20                     ~ "Fair disclosure",
+      GW_Score > 0.20 & GW_Score <= 0.40    ~ "Indikasi greenwashing ringan",
+      GW_Score > 0.40 & GW_Score <= 0.60    ~ "Indikasi greenwashing sedang",
+      GW_Score > 0.60                       ~ "Indikasi greenwashing kuat"
+    )
+  )
+
+print(hasil_akhir %>% select(doc_id, skor_narasi, skor_kinerja_aktual,
+                             GW_Score, kategori_greenwashing))
+
+# Simpan hasil akhir lengkap (termasuk GW_Score) ke CSV
+write_csv(hasil_akhir, "hasil_greenwashing_score.csv")
+
+# Tabel inilah yang kolom GW_Score-nya akan jadi VARIABEL DEPENDEN (GWIndex)
+# di tahap regresi data panel selanjutnya (analisis_greenwashing.R)
