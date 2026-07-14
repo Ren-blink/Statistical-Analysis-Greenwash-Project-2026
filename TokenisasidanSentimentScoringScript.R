@@ -47,7 +47,7 @@ lapply(packages, library, character.only = TRUE)
 #   - doc_id : identitas dokumen (misal "PT_A_2023")
 #   - text   : isi narasi sustainability report
 
-folder_pdf <- "C:/Users/Rayhan Nauvan/OneDrive/Documents/Journals/Journal GREENWASH/Folder Report/ADRO"
+folder_pdf <- "C:/Users/Rayhan Nauvan/OneDrive/Documents/Journals/Journal GREENWASH/Folder Report/TOBA"
 
 file_list <- list.files(folder_pdf, pattern = "\\.pdf$", full.names = TRUE)
 
@@ -290,10 +290,10 @@ hasil_akhir <- sentiment_score %>%
 print(hasil_akhir)
 
 # Simpan hasil ke CSV
-write_csv(hasil_akhir, "hasil_text_mining_sentimen.csv")
+write_csv(hasil_akhir, "hasil_text_mining_sentimen_TOBA.csv")
 
 
-# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------    
 # 10. NORMALISASI MIN-MAX LINTAS SAMPEL -> SKOR NARASI (0-1)
 # ------------------------------------------------------------------------------
 # PENTING: normalisasi di sini dilakukan LINTAS SEMUA DOKUMEN SEKALIGUS
@@ -318,8 +318,42 @@ hasil_akhir <- hasil_akhir %>%
   )
 
 print(hasil_akhir %>% select(
-  doc_id, skor_ternormalisasi, sentimen_norm, rasio_aspirasional, aspriasional_norm, skor_narasi
+  doc_id, skor_ternormalisasi, sentimen_norm, rasio_aspirasional, aspirasional_norm, skor_narasi
 ))
+
+# ------------------------------------------------------------------------------
+# 10b. GABUNGKAN SEMUA CSV HASIL STEP 9 (JALANKAN SETELAH SEMUA PT SELESAI)
+# ------------------------------------------------------------------------------
+# Jalankan blok ini hanya SEKALI setelah semua PT selesai diproses (step 1-9).
+# Hasilnya akan menjadi hasil_akhir gabungan yang siap dinormalisasi di step 10.
+
+folder_hasil <- "hasil tes"   # <-- ganti sesuai nama folder penyimpanan CSV hasil step 9
+
+file_csv <- list.files(folder_hasil,
+                       pattern = "hasil_text_mining_sentimen.*\\.csv$",
+                       full.names = TRUE)
+
+hasil_akhir <- purrr::map(file_csv, readr::read_csv, show_col_types = FALSE) |>
+  dplyr::bind_rows()
+
+# Konfirmasi: pastikan semua PT & tahun terbaca
+hasil_akhir |> dplyr::count(doc_id)
+
+# Normalisasi min-max lintas seluruh sampel (step 10)
+normalize_minmax <- function(x) {
+  (x - min(x, na.rm = TRUE)) / (max(x, na.rm = TRUE) - min(x, na.rm = TRUE))
+}
+
+hasil_akhir <- hasil_akhir |>
+  dplyr::mutate(
+    sentimen_norm     = normalize_minmax(skor_ternormalisasi),
+    aspirasional_norm = normalize_minmax(rasio_aspirasional),
+    skor_narasi       = (sentimen_norm + aspirasional_norm) / 2
+  )
+
+# Simpan gabungan agar tidak perlu diulang
+readr::write_csv(hasil_akhir, "hasil_text_mining_sentimen_GABUNGAN.csv")
+cat("Tersimpan:", nrow(hasil_akhir), "baris ke hasil_text_mining_sentimen_GABUNGAN.csv\n")
 
 # ------------------------------------------------------------------------------
 # 11. IMPORT DATA PROPER & KONVERSI KE SKOR KINERJA AKTUAL (0-1)
@@ -334,40 +368,35 @@ print(hasil_akhir %>% select(
 #   proper_rating : peringkat PROPER, boleh berupa TEKS ("Hitam","Merah","Biru",
 #                   "Hijau","Emas") ATAU ANGKA (1-5), keduanya didukung di bawah
 
-folder_proper <- "data_proper/"   # <-- ganti sesuai lokasi file data PROPER kamu
-file_proper   <- "data_proper.csv"  # <-- ganti sesuai nama file kamu
+folder_proper <- "FolderProper"   # <-- ganti sesuai lokasi folder data PROPER kamu
 
-data_proper <- read_csv(paste0(folder_proper, file_proper), show_col_types = FALSE)
+# Baca dan gabungkan semua file CSV PROPER sekaligus
+data_proper <- list.files(folder_proper,
+                           pattern = "\\.csv$",
+                           full.names = TRUE) |>
+  purrr::map(readr::read_csv, show_col_types = FALSE) |>
+  dplyr::bind_rows()
 
 # Cek dulu bentuk datanya sebelum lanjut
 head(data_proper)
 
-# Kalau proper_rating berupa TEKS, konversi dulu ke skala ordinal 1-5:
-peringkat_ke_ordinal <- c(
-  "Hitam" = 1, "Merah" = 2, "Biru" = 3, "Hijau" = 4, "Emas" = 5
-)
-
-data_proper <- data_proper %>%
-  mutate(
-    proper_ordinal = if (is.character(proper_rating)) {
-      recode(proper_rating, !!!peringkat_ke_ordinal)
-    } else {
-      as.numeric(proper_rating)
-    }
-  )
-
-# Konversi ordinal (1-5) ke skala 0-1, sesuai rumus:
-# Hitam (1) -> 0, Emas (5) -> 1
+# Konversi ordinal (1-5) ke skala 0-1 sesuai rumus:
 konversi_proper <- function(skor_ordinal) {
-  (skor_ordinal - 1) / (5 - 1)
+  (skor_ordinal - 1) / (5 - 1) 
 }
 
 data_proper <- data_proper %>%
-  mutate(skor_kinerja_aktual = konversi_proper(proper_ordinal)) %>%
-  select(doc_id, proper_rating, proper_ordinal, skor_kinerja_aktual)
+  mutate(
+    proper_ordinal = as.numeric(proper_ordinal),
+    skor_kinerja_aktual = konversi_proper(proper_ordinal)
+  ) %>%
+  select(doc_id, proper_ordinal, skor_kinerja_aktual)
 
 print(data_proper)
 
+data_proper %>%
+  filter(is.na(proper_ordinal)) %>%
+  select(doc_id)
 
 
 # ------------------------------------------------------------------------------
@@ -405,3 +434,39 @@ write_csv(hasil_akhir, "hasil_greenwashing_score.csv")
 
 # Tabel inilah yang kolom GW_Score-nya akan jadi VARIABEL DEPENDEN (GWIndex)
 # di tahap regresi data panel selanjutnya (analisis_greenwashing.R)
+
+# VISUALISASI HEATMAP
+library(ggplot2)
+library(dplyr)
+library(readr)
+library(stringr)
+
+hasil_akhir <- read_csv("hasil_greenwashing_score.csv", show_col_types = FALSE)
+
+plot_data <- hasil_akhir |>
+  mutate(
+    PT    = str_extract(doc_id, "(?<=PT_)[A-Z]+"),
+    tahun = str_extract(doc_id, "\\d{4}$")
+  )
+
+ggplot(plot_data, aes(x = tahun, y = PT, fill = GW_Score)) +
+  geom_tile(color = "white", linewidth = 0.8) +
+  geom_text(aes(label = round(GW_Score, 2)), size = 3.2, color = "white", fontface = "bold") +
+  scale_fill_gradientn(
+    colours = c("#2E7D32", "#FDD835", "#E53935"),
+    values  = scales::rescale(c(0, 0.2, 0.4, 1)),
+    limits  = c(0, 1),
+    name    = "GW_Score"
+  ) +
+  labs(
+    title    = "Greenwashing Score per Perusahaan per Tahun",
+    subtitle = "0 = tidak ada gap  |  1 = gap maksimal antara narasi dan kinerja aktual",
+    x        = "Tahun",
+    y        = NULL
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid  = element_blank(),
+    axis.text.y = element_text(face = "bold")
+  )
+
