@@ -11,7 +11,7 @@
 #   5. Hapus stopwords (kata umum yang tidak bermakna sentimen)
 #   6. Sentiment scoring pakai leksikon InSet (Bahasa Indonesia)
 #   7. Hitung Sentiment Score per dokumen/perusahaan/tahun
-#   8. (Bonus) Frekuensi kata aspirasional -- relevan untuk indikator greenwashing
+#   8. Frekuensi kata aspirasional -- relevan untuk indikator greenwashing
 #
 # ==============================================================================
 
@@ -19,12 +19,6 @@
 # ------------------------------------------------------------------------------
 # 1. SETUP PACKAGE
 # ------------------------------------------------------------------------------
-# tidytext   -> untuk tokenisasi & join dengan leksikon sentimen (gaya "tidy data")
-# quanteda   -> untuk membangun corpus & document-feature matrix (dfm), berguna
-#               kalau nanti mau lanjut ke analisis frekuensi/readability
-# dplyr, stringr, readr -> manipulasi data & teks
-# tibble     -> struktur data rapi
-
 packages <- c("tidytext", "quanteda", "quanteda.textstats",
               "dplyr", "stringr", "readr", "tibble", "purrr", "pdftools")
 
@@ -39,15 +33,11 @@ lapply(packages, library, character.only = TRUE)
 # ------------------------------------------------------------------------------
 # 2. IMPORT DATA TEKS
 # ------------------------------------------------------------------------------
-# Ganti bagian ini dengan cara kamu membaca data asli.
-# Struktur yang dipakai di script ini: satu baris = satu dokumen/narasi
-# (misalnya: satu baris per perusahaan per tahun, atau per bagian laporan)
-#
 # Kolom minimal yang dibutuhkan:
 #   - doc_id : identitas dokumen (misal "PT_A_2023")
 #   - text   : isi narasi sustainability report
 
-folder_pdf <- "C:/Users/Rayhan Nauvan/OneDrive/Documents/Journals/Journal GREENWASH/Folder Report/TOBA"
+folder_pdf <- #masukkan file pdf disini
 
 file_list <- list.files(folder_pdf, pattern = "\\.pdf$", full.names = TRUE)
 
@@ -71,17 +61,6 @@ reports %>%
   select(doc_id, jumlah_karakter) %>%
   print()
 
-# --- Kalau hanya mau coba dengan data dummy dulu (tanpa PDF), aktifkan ini: ---
-# reports <- tibble(
-#   doc_id = c("PT_A_2023", "PT_B_2023", "PT_C_2023"),
-#   text = c(
-#     "Perusahaan kami berkomitmen penuh terhadap keberlanjutan lingkungan dan telah mengurangi emisi karbon secara signifikan.",
-#     "Kami berupaya menjaga kelestarian alam meskipun masih menghadapi tantangan dalam pengelolaan limbah industri.",
-#     "Program CSR kami memberikan dampak positif bagi masyarakat sekitar, namun beberapa kritik terkait pencemaran belum sepenuhnya kami tanggapi."
-#   )
-# )
-
-
 # ------------------------------------------------------------------------------
 # 3. PREPROCESSING (CLEANING TEKS MENTAH)
 # ------------------------------------------------------------------------------
@@ -97,15 +76,10 @@ reports_clean <- reports %>%
       str_squish()                            # rapikan spasi berlebih
   )
 
-
 # ------------------------------------------------------------------------------
 # 4. TOKENISASI
 # ------------------------------------------------------------------------------
 # Tokenisasi = memecah kalimat/paragraf menjadi satuan kata (token).
-# unnest_tokens() dari tidytext akan otomatis:
-#   - memecah setiap teks jadi baris per kata
-#   - tetap menyimpan doc_id, supaya kita tahu kata itu berasal dari dokumen mana
-#
 # Hasilnya: format "tidy" -> 1 baris = 1 kata + info dokumen asalnya
 
 tokens <- reports_clean %>%
@@ -141,10 +115,8 @@ head(tokens_clean, 15)
 # InSet Lexicon (Koto & Rahmaningtyas, 2017): leksikon sentimen Bahasa Indonesia
 # berisi kata positif & negatif dengan bobot -5 s.d. +5.
 # Sumber resmi: https://github.com/fajri91/InSet
-#
-# Kita unduh langsung dari GitHub supaya script ini reproducible.
 
-folder_lexicon <- "C:/Users/Rayhan Nauvan/OneDrive/Documents/StatisticalAnalysisGreenwashProject2026/lexicon"
+folder_lexicon <- # Masukkan file lexicon disini
 
 lex_pos <- read_tsv(paste0(folder_lexicon, "/positive.tsv"), col_names = c("word", "weight"), skip = 1, show_col_types = FALSE)
 lex_neg <- read_tsv(paste0(folder_lexicon, "/negative.tsv"), col_names = c("word", "weight"), skip = 1, show_col_types = FALSE)
@@ -153,18 +125,11 @@ lex_neg <- read_tsv(paste0(folder_lexicon, "/negative.tsv"), col_names = c("word
 lexicon_id <- bind_rows(lex_pos, lex_neg) %>%
   distinct(word, .keep_all = TRUE)
 
-# --- Kalau tidak ada akses internet, pakai leksikon manual sederhana sebagai cadangan ---
-# lexicon_id <- tibble(
-#   word = c("berkomitmen", "keberlanjutan", "positif", "kritik", "pencemaran", "tantangan"),
-#   weight = c(3, 3, 4, -2, -4, -1)
-# )
-
 # Join token dengan leksikon -> setiap kata yang cocok akan dapat skor
 tokens_scored <- tokens_clean %>%
   inner_join(lexicon_id, by = "word")
 
 head(tokens_scored, 15)
-
 
 # ------------------------------------------------------------------------------
 # 7. HITUNG SENTIMENT SCORE PER DOKUMEN
@@ -209,14 +174,12 @@ print(sentiment_score)
 #   8b. Kamu validasi manual: kandidat mana yang benar aspirasional/klaim komitmen
 #       (proses ini dilakukan SEKALI di luar R, misal di Excel)
 #   8c. Baca kembali daftar yang sudah divalidasi, lalu hitung frekuensinya per dokumen
-#
-# Kenapa tetap perlu validasi manual? Karena "aspirasional" itu konsep semantik
-# (soal MAKNA klaim), bukan pola statistik murni -- tidak ada algoritma yang bisa
-# 100% otomatis menentukan itu tanpa human judgment. Tapi dengan cara ini,
-# kandidatnya OBJEKTIF berasal dari data (kata yang benar-benar sering dipakai di
-# laporanmu), bukan ditebak duluan oleh peneliti sebelum lihat datanya.
+# Dilakukannya validasi manual sebab "aspirasiona" itu konsep semantik dan bukan
+# pola statistik murni. Dengan cara ini, kandidatnya objektif berasal dari data
+# (kata yang benar-benar sering dipakai di laporan), bukan ditebak duluan oleh
+# peneliti sebelum dilihat datanya
 
-# --- 8a. HITUNG FREKUENSI KATA DI SELURUH KORPUS ---
+# --- 8a. HITUNG FREKUENSI KATA DI SELURUH KORPUS/DOKUMEN ---
 # Kita hitung berapa kali tiap kata muncul, ditotal dari SEMUA dokumen sekaligus, 
 # supaya kandidat yang muncul adalah kata yang memang umum dipakai lintas laporan
 # (bukan cuma kebetulan sering di satu perusahaan saja).
@@ -225,20 +188,21 @@ frekuensi_kata <- tokens_clean %>%
   count(word, sort = TRUE, name = "frekuensi")
 
 # Ambil top N kata (misal 150) sebagai KANDIDAT untuk divalidasi manual.
-# N bisa disesuaikan -- makin besar N, makin lengkap tapi makin lama proses validasinya.
+# N bisa disesuaikan, makin besar N, makin lengkap tapi makin lama proses validasinya.
 top_n_kandidat <- 150
 
 kandidat_aspirasional <- frekuensi_kata %>%
   slice_max(frekuensi, n = top_n_kandidat) %>%
   mutate(
-    # Dihitung hanya untuk kandidat top-N (bukan seluruh vocabulary) supaya cepat
+    # Dihitung hanya untuk kandidat top-N (bukan seluruh kosa kata) supaya cepat
     jumlah_dokumen_muncul = map_int(word, ~ sum(str_detect(reports_clean$text_clean, .x))),
-    aspirasional = NA  # kolom kosong ini yang akan kamu isi manual
+    aspirasional = NA  # kolom ini yang akan diisi manual
   )
 
 # Ekspor ke CSV supaya bisa dibuka & diisi di Excel
 write_csv(kandidat_aspirasional, "kandidat_kata_aspirasional.csv")
 getwd("kandidat_kata_aspirasional.csv")
+
 # --- 8b. VALIDASI MANUAL (DILAKUKAN DI LUAR R) ---
 # 1. Buka file "kandidat_kata_aspirasional.csv" yang baru dibuat di folder kerja R kamu
 #    (cek lokasinya dengan getwd())
@@ -261,11 +225,6 @@ kata_aspirasional <- kandidat_tervalidasi %>%
 
 # Cek daftar kata aspirasional final yang akan dipakai
 print(kata_aspirasional)
-
-# --- Fallback: kalau belum sempat validasi manual dan mau coba jalankan dulu ---
-# kata_aspirasional <- c("berkomitmen", "berkelanjutan", "peduli", "ramah lingkungan",
-#                        "inovatif", "unggul", "terdepan", "bertanggung jawab",
-#                        "berwawasan lingkungan", "hijau")
 
 freq_aspirasional <- reports_clean %>%
   mutate(
@@ -299,7 +258,7 @@ write_csv(hasil_akhir, "hasil_text_mining_sentimen_TOBA.csv")
 # PENTING: normalisasi di sini dilakukan LINTAS SEMUA DOKUMEN SEKALIGUS
 # (bukan per dokumen satu-satu), supaya perbandingan antar perusahaan/tahun adil.
 # Ini kenapa tahap ini baru bisa dilakukan SETELAH semua dokumen selesai diproses
-# di tahap 1-9 -- kamu butuh nilai MIN dan MAX dari SELURUH sampel dulu.
+# di tahap 1-9, kamu butuh nilai MIN dan MAX dari SELURUH sampel dulu.
 #
 # Komponen yang dinormalisasi:
 #   a) skor_ternormalisasi (dari sentiment scoring InSet, tahap 7)
@@ -358,17 +317,16 @@ cat("Tersimpan:", nrow(hasil_akhir), "baris ke hasil_text_mining_sentimen_GABUNG
 # ------------------------------------------------------------------------------
 # 11. IMPORT DATA PROPER & KONVERSI KE SKOR KINERJA AKTUAL (0-1)
 # ------------------------------------------------------------------------------
-# Data PROPER ini TIDAK dihasilkan dari text mining -- ini data sekunder yang kamu
-# kumpulkan sendiri dari publikasi Kementerian Lingkungan Hidup dan Kehutanan (KLHK),
-# biasanya berupa file Excel/CSV yang kamu susun manual per perusahaan per tahun.
+# Data PROPER ini TIDAK dihasilkan dari text mining, ini merupakan data sekunder yang
+# dikumpulkan sendiri dari publikasi Kementerian Lingkungan Hidup dan Kehutanan (KLHK).
 #
-# FORMAT FILE YANG DIHARAPKAN (silakan sesuaikan nama kolom bila beda):
+# FORMAT FILE YANG DIHARAPKAN (sesuaikan nama kolom bila beda):
 #   doc_id        : HARUS PERSIS SAMA dengan doc_id di atas (misal "PT_ADRO_2021")
 #                   supaya bisa di-join dengan benar
 #   proper_rating : peringkat PROPER, boleh berupa TEKS ("Hitam","Merah","Biru",
 #                   "Hijau","Emas") ATAU ANGKA (1-5), keduanya didukung di bawah
 
-folder_proper <- "FolderProper"   # <-- ganti sesuai lokasi folder data PROPER kamu
+folder_proper <- "FolderProper"   # <-- ganti sesuai lokasi folder data PROPER
 
 # Baca dan gabungkan semua file CSV PROPER sekaligus
 data_proper <- list.files(folder_proper,
@@ -377,7 +335,7 @@ data_proper <- list.files(folder_proper,
   purrr::map(readr::read_csv, show_col_types = FALSE) |>
   dplyr::bind_rows()
 
-# Cek dulu bentuk datanya sebelum lanjut
+# Cek bentuk datanya sebelum lanjut
 head(data_proper)
 
 # Konversi ordinal (1-5) ke skala 0-1 sesuai rumus:
@@ -409,7 +367,7 @@ data_proper %>%
 hasil_akhir <- hasil_akhir %>%
   left_join(data_proper, by = "doc_id")
 
-# Cek dulu apakah ada doc_id yang tidak match (PROPER-nya NA) -- ini pertanda
+# Cek dulu apakah ada doc_id yang tidak match (PROPER-nya NA), ini pertanda
 # ada perbedaan format penulisan doc_id antara data teks dan data PROPER
 hasil_akhir %>%
   filter(is.na(skor_kinerja_aktual)) %>%
